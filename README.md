@@ -11,3 +11,6 @@ Rivisitazione del disco di Nipkow usando Esp8266. Il disco è in grado di proiet
 * Rotary Encoder
 * Sensore Infrarossi
 
+https://user-images.githubusercontent.com/90097113/137977385-fb82ca4b-1abb-4e2a-989c-457421ffe729.mp4
+
+
