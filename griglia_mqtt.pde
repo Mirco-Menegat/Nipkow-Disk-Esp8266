@@ -2,6 +2,7 @@ import mqtt.*;
 import java.nio.charset.StandardCharsets;
 
 MQTTClient client;
+int pausa_messaggio=1000;
 byte [] stringa=null;
 boolean scorri=true;
 int altezza =8;
@@ -12,6 +13,10 @@ color [] colori={bianco,rosso};
 Square [] griglia=new Square[altezza*lunghezza];
 int iterazione;
 float time1=0;
+int numero_lettera=0;                                                            //indice lettera nella parola
+int lunghezza_lettera=0;                                                         //indice colonna della lettera
+int transla_count=0;                                                             //quando finisco di scrivere la parola conta le traslazioni finche non è sparita dallo schermo
+int Lettera[][]={{}}; 
 
 int A[][]={{15,31,47,63,79,95,111,127},{63,127},{63,127},{15,31,47,63,79,95,111,127}};
 int B[][]={{15,31,47,63,79,95,111,127},{15,79,127},{15,79,127},{15,31,47,63,95,111,127}};
@@ -60,10 +65,6 @@ void setup(){
   }
   iterazione=-1;
 }
-int numero_lettera=0;                                                            //indice lettera nella parola
-int lunghezza_lettera=0;                                                         //indice colonna della lettera
-int Lettera[][]={{}}; 
-int transla_count=0;                                                             //quando finisco di scrivere la parola conta le traslazioni finche non è sparita dallo schermo
 
 void update(){ //Preparo la griglia alla prossima colonna da inserire
          switch(stringa[numero_lettera]){
@@ -102,7 +103,7 @@ void update(){ //Preparo la griglia alla prossima colonna da inserire
               
 }
 void draw(){
-    if(millis()-time1>1000){                    
+    if(millis()-time1>pausa_messaggio){                    
       if(scorri==true && stringa!=null){        
           if (transla_count==lunghezza-1){
               numero_lettera=0;
@@ -168,7 +169,7 @@ void mouseClicked(){
 
 void clientConnected() {
   println("client connected");
-  client.subscribe("/mello/buffer/received");
+  client.subscribe("/Nipkow_Disk-Esp8266/processing");
 }
 
 
@@ -226,9 +227,9 @@ for(int i=1;i<altezza*lunghezza;i++){
     codifica_stringa=codifica_stringa+",";
     codifica_stringa=codifica_stringa+Integer.toString(i+1);}
 }
- //println(codifica_stringa);
- //println();
- client.publish("/mello/buffer", codifica_stringa);
+ println(codifica_stringa);
+ println();
+ client.publish("/Nipkow_Disk-Esp8266/buffer", codifica_stringa);
 }
 
 void keyPressed(){
