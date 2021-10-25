@@ -1,6 +1,8 @@
 # Nipkow-Disk-Esp8266
 ## Descrizione 
-Rivisitazione del disco di Nipkow usando Esp8266. Il disco è in grado di proiettare immagini statiche o un testo scorrevole.
+Rivisitazione del disco di Nipkow usando Esp8266. Il disco è in grado di proiettare immagini statiche o un testo scorrevole tramite mqtt.
+È stato inserito un rotary encoder siccome solo un ottavo del disco proietta l'immagine corretta, attraverso il rotary encoder possiamo spostare la finestra in modo da averla nella giusta posizione.
+Il sensore a infrarossi rileva il passaggio di 128 tacche nere e bianche poste dietro al disco. Un ottavo di queste 128 tacche determinano la risoluzione della larghezza della finestra mentre i numero di fori la risoluzione della sua altezza, quindi il disco ha una risoluzione di 16*8. I buchi e lo spazio tra una tacca e l'altra sono della dimensioni di 3 mm.
 
 ## Materiale
 * ESP8266
@@ -11,6 +13,11 @@ Rivisitazione del disco di Nipkow usando Esp8266. Il disco è in grado di proiet
 * Rotary Encoder
 * Sensore Infrarossi
 
-https://user-images.githubusercontent.com/90097113/137977385-fb82ca4b-1abb-4e2a-989c-457421ffe729.mp4
+## Software ausiliario
+* Processing
+
+![nipkow](https://user-images.githubusercontent.com/90097113/138710939-f1d4c5c4-922d-4080-b645-fe10c7495c30.jpeg)
+
+https://user-images.githubusercontent.com/90097113/138713564-121376ef-9f7f-405c-bf46-eb5e21d674eb.mp4
 
 
