@@ -3,6 +3,7 @@
 #include <TaskScheduler.h>
 #include<stdio.h>
 #include<stdlib.h>
+#include <PID_v1.h>
 #include "WiFi_Credenziali.h"
 
  #define led D8
@@ -11,6 +12,18 @@
  #define in3  D2
  #define outputA D3 //DT
  #define outputB D4 //CLK
+
+ double Setpoint=750; ; // will be the desired value
+double RPM; // photo sensor
+double Output=0 ; //LED
+//PID parameters
+double Kp=2, Ki=10, Kd=0; 
+ double time0_RPM;
+ double time1_RPM;
+//create PID instance 
+PID myPID(&RPM, &Output, &Setpoint, Kp, Ki, Kd, DIRECT);
+
+
   int aState;
  int aLastState;  
 // WiFi
@@ -41,13 +54,21 @@ int contatore_buffer=0;
 WiFiClient espClient;
 PubSubClient client(espClient);
 
+
+void calculate_RPM(){
+  if (time1_RPM-time0_RPM!=0){
+  RPM=60000/(time1_RPM-time0_RPM);       //1 minuto/ il tempo che ci mette a fare un giro
+  }
+}
+
 void stampa(){
-//  Serial.println(client.connected());  
+  Serial.println(RPM);  
 }
 Task printTask(5000*TASK_MILLISECOND, TASK_FOREVER, stampa);
 
 void ICACHE_RAM_ATTR gestisci_luce(){ 
     if (conta_tacche==offset){                         //Inizio il giro sempre con luce spenta
+        time0_RPM=millis();
         luce=false;
       digitalWrite(led,LOW);
       }
@@ -66,6 +87,8 @@ void ICACHE_RAM_ATTR gestisci_luce(){
     digitalWrite(led,LOW);}
     }
   if (conta_tacche>=128+offset){            //mi preparo a scrivere la nuova colonna solo quando ho finito tutto il giro
+           time1_RPM=millis(); 
+      calculate_RPM(); 
       conta_tacche=offset;
       contatore_buffer=0;
       if (nuovo_messaggio==true){               //se mi è arrivato un messaggio
@@ -78,14 +101,12 @@ void ICACHE_RAM_ATTR gestisci_luce(){
        }
    
    }
-   if (contatore_buffer>=buff_length){      
+   if (contatore_buffer>=buff_length){    
       contatore_buffer=0;
     }
   }
 
 void setup() {
-
-
   Serial.begin(115200);
   pinMode(enB, OUTPUT);
   pinMode(in3, OUTPUT);
@@ -93,7 +114,7 @@ void setup() {
    pinMode(sensore,INPUT_PULLUP);
    Serial.begin (115200);
    digitalWrite(in3, HIGH);
-   analogWrite(enB, 600);
+  
      attachInterrupt(
             digitalPinToInterrupt(sensore),
             gestisci_luce,   
@@ -130,6 +151,10 @@ void setup() {
    runner.addTask(printTask);
    printTask.enable();
    aLastState = digitalRead(outputA);   
+
+   myPID.SetMode(AUTOMATIC);
+  //Adjust PID values
+  myPID.SetTunings(Kp, Ki, Kd);
 }
 
 void callback(char *topic, byte *payload, unsigned int length) { 
@@ -168,6 +193,8 @@ void callback(char *topic, byte *payload, unsigned int length) {
 }
 float time0=0;
 void loop() {
+  myPID.Compute();
+  analogWrite(enB,map(Output,0,255,0,1023));
   client.loop();
   runner.execute();
   if (millis()-time0>10){                  //girando il potenziometro sposto la finestra a in senso orario o antiorario
