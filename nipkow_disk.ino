@@ -13,14 +13,12 @@
  #define outputA D3 //DT
  #define outputB D4 //CLK
 
- double Setpoint=750; ; // will be the desired value
-double RPM; // photo sensor
-double Output=0 ; //LED
-//PID parameters
+ double Setpoint=750; ; // RPM ideali
+double RPM; 
+double Output=0 ; 
 double Kp=2, Ki=10, Kd=0; 
  double time0_RPM;
  double time1_RPM;
-//create PID instance 
 PID myPID(&RPM, &Output, &Setpoint, Kp, Ki, Kd, DIRECT);
 
 
