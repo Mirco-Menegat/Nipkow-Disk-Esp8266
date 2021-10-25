@@ -199,13 +199,9 @@ void loop() {
   aState = digitalRead(outputA);
    if (aState != aLastState){     
      if (digitalRead(outputB) != aState ) { //Se ruoto il potenziometro in senso orario
-      // if (offset<128){
        offset ++;
-       //}
      }else{ //Se ruoto il potenziometro in senso antiorario
-      //if (offset>0){
       offset--;
-      //}
       }
      time0=millis();
    }
