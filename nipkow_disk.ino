@@ -1,9 +1,9 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 #include <TaskScheduler.h>
-
 #include<stdio.h>
 #include<stdlib.h>
+#include "WiFi_Credenziali.h"
 
  #define led D8
  #define sensore D7
@@ -14,18 +14,24 @@
   int aState;
  int aLastState;  
 // WiFi
-const char *ssid = ""; // Enter your WiFi name
-const char *password = "";  // Enter WiFi password
+const char *ssid = ssid_Wifi; 
+const char *password = password_Wifi;  
 
 // MQTT Broker
 const char *mqtt_broker = "broker.hivemq.com";
-const char *topic = "/mello/buffer";
-const char *mqtt_username = "MelloMircoasd";
+const char *topic = "/Nipkow_Disk-Esp8266/buffer";
+const char *mqtt_username = "esp8266";
 const char *mqtt_password = "public";
 const int mqtt_port = 1883;
 
-int buff[128];
+boolean sel_buff=false;                         //flag di selezione per selezionare il buffer corrente e quello di riserva
+int buff0[128];
 int buff_length=8;
+int * buff_pointer=buff0;                        //puntatore al buffer corrente così da non dover spostare tutti gli elementi da un buffer all'altro ma solo il puntatore
+
+int buff1[128];
+int buff_length_riserva=8;
+int nuovo_messaggio=false;
 
 int contatore_buffer=0;
  boolean luce=false;
@@ -35,50 +41,51 @@ int contatore_buffer=0;
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-//void stampa(){
-  //Serial.println(buff_length);
- // Serial.println(client.connected());  
-//}
-//Task printTask(1000*TASK_MILLISECOND, TASK_FOREVER, stampa);
+void stampa(){
+//  Serial.println(client.connected());  
+}
+Task printTask(5000*TASK_MILLISECOND, TASK_FOREVER, stampa);
 
-void ICACHE_RAM_ATTR gestisci_luce()  
- { 
-    if (conta_tacche==offset){
+void ICACHE_RAM_ATTR gestisci_luce(){ 
+    if (conta_tacche==offset){                         //Inizio il giro sempre con luce spenta
         luce=false;
       digitalWrite(led,LOW);
       }
 
   conta_tacche++;
-
-  
-  if (buff_length>0 && int(conta_tacche)==buff[buff_length-1-contatore_buffer]+offset ){
+    
+  if (buff_length>0 && int(conta_tacche)==buff_pointer[buff_length-1-contatore_buffer]+offset ){ //Se il buffer non è vuoto e conta_tacche coincide con il prossimo elemento del buffer (conto dal fondo)
     luce=!luce;
+    if (contatore_buffer<buff_length-1){  
     contatore_buffer++;
+    }
      
     if (luce==true){
        digitalWrite(led,HIGH);
   }else{
     digitalWrite(led,LOW);}
     }
-  if (conta_tacche==128+offset){
+  if (conta_tacche>=128+offset){            //mi preparo a scrivere la nuova colonna solo quando ho finito tutto il giro
       conta_tacche=offset;
-      contatore_buffer=0;      
+      contatore_buffer=0;
+      if (nuovo_messaggio==true){               //se mi è arrivato un messaggio
+        buff_length=buff_length_riserva;
+        if (sel_buff==true){                   //cambio puntatore buffer da buff a buff1
+           buff_pointer=buff1;           
+        }else{
+           buff_pointer=buff0;              //cambio puntatore buffer da buff1 a buff
+          }
+       }
+   
    }
-   if (contatore_buffer==buff_length){
+   if (contatore_buffer>=buff_length){      
       contatore_buffer=0;
     }
   }
 
 void setup() {
-  buff[0]=128;
-buff[1]=112;
-buff[2]=96;
-buff[3]=80;
-buff[4]=64;
-buff[5]=48;
-buff[6]=32;
-buff[7]=16;
-  // Set software serial baud to 115200;
+
+
   Serial.begin(115200);
   pinMode(enB, OUTPUT);
   pinMode(in3, OUTPUT);
@@ -87,22 +94,18 @@ buff[7]=16;
    Serial.begin (115200);
    digitalWrite(in3, HIGH);
    analogWrite(enB, 600);
-
-   
-    attachInterrupt(
+     attachInterrupt(
             digitalPinToInterrupt(sensore),
             gestisci_luce,   
             RISING
            );
-           
   // connecting to a WiFi network
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
+      delay(400);
       Serial.println("Connecting to WiFi..");
   }
   Serial.println("Connected to the WiFi network");
-
   
   //connecting to a mqtt broker
   client.setServer(mqtt_broker, mqtt_port);
@@ -116,27 +119,27 @@ buff[7]=16;
       } else {
           Serial.print("failed with state ");
           Serial.print(client.state());
-          delay(500);
+          delay(100);
           
       }
   }
 
   client.subscribe(topic);
   
-  // runner.init();
-   //runner.addTask(printTask);
-   //printTask.enable();
+   runner.init();
+   runner.addTask(printTask);
+   printTask.enable();
    aLastState = digitalRead(outputA);   
 }
 
-void callback(char *topic, byte *payload, unsigned int length) {
+void callback(char *topic, byte *payload, unsigned int length) { 
   Serial.print("Nuovo messaggio nel topic: ");
   Serial.println(topic);
   Serial.print("Messaggio:");
 
   int indice=1,numero=0;
    int n_elemento=0;
-  for (int i = length-1; i >=0 ; i--) {
+  for (int i = length-1; i >=0 ; i--) {  //leggo il char * al contrario così da poter ricostruire i numeri ed inserirli nel buffer che non sto usando correntemente
      
       if(payload[i]!=','){
       char cifra=(char) payload[i];
@@ -144,32 +147,43 @@ void callback(char *topic, byte *payload, unsigned int length) {
       indice*=10;
       
       }else{
-        buff[n_elemento]=numero;
+        if (sel_buff==true){
+          buff0[n_elemento]=numero;
+        }else{
+            buff1[n_elemento]=numero;
+        }      
         n_elemento++;
         Serial.print(numero);
         Serial.print(" ");
         indice=1;
         numero=0;
         }
-  }
-  luce=false;
-  buff_length=n_elemento;
-  Serial.println(buff_length);
+  }   
+           buff_length_riserva=n_elemento;
+        
   Serial.println();
   Serial.println("-----------------------");
+  nuovo_messaggio=true;
+  sel_buff=!sel_buff;
 }
-
+float time0=0;
 void loop() {
   client.loop();
   runner.execute();
-  aState = digitalRead(outputA); //Legge lo stato corrente di  outputA
+  if (millis()-time0>10){                  //girando il potenziometro sposto la finestra a in senso orario o antiorario
+  aState = digitalRead(outputA);
    if (aState != aLastState){     
-     // se encoder è stato ruotato in senso orario
-     if (digitalRead(outputB) != aState) { 
+     if (digitalRead(outputB) != aState ) { //Se ruoto il potenziometro in senso orario
+      // if (offset<128){
        offset ++;
-     }else{ //se encoder è stato ruotato in senso antiorario
+       //}
+     }else{ //Se ruoto il potenziometro in senso antiorario
+      //if (offset>0){
       offset--;
+      //}
       }
+     time0=millis();
+   }
    } 
    aLastState = aState; 
  
