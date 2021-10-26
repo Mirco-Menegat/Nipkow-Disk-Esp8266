@@ -13,28 +13,34 @@
  #define outputA D3 //DT
  #define outputB D4 //CLK
 
- double Setpoint=750; ; // RPM ideali
-double RPM; 
+ 
+//PID
+double Setpoint=580; ; //Rpm ideali
+double RPM;
 double Output=0 ; 
 double Kp=2, Ki=10, Kd=0; 
- double time0_RPM;
- double time1_RPM;
+double time0_RPM;
+double time1_RPM;
 PID myPID(&RPM, &Output, &Setpoint, Kp, Ki, Kd, DIRECT);
 
 
-  int aState;
- int aLastState;  
-// WiFi
+//STATI DEL ROTARY ENCODER CORRENTE E PRECEDENTE  time0_encoder per gestire bounce
+int aState;
+int aLastState;  
+float time0_encoder=0;
+
+// CREDENZIALI WIFI
 const char *ssid = ssid_Wifi; 
 const char *password = password_Wifi;  
 
-// MQTT Broker
+// MQTT BROKER
 const char *mqtt_broker = "broker.hivemq.com";
 const char *topic = "/Nipkow_Disk-Esp8266/buffer";
 const char *mqtt_username = "esp8266";
 const char *mqtt_password = "public";
 const int mqtt_port = 1883;
 
+//BUFFER CORRENTE E BUFFER DI RISERVA
 boolean sel_buff=false;                         //flag di selezione per selezionare il buffer corrente e quello di riserva
 int buff0[128];
 int buff_length=8;
@@ -42,18 +48,35 @@ int * buff_pointer=buff0;                        //puntatore al buffer corrente 
 
 int buff1[128];
 int buff_length_riserva=8;
-int nuovo_messaggio=false;
+int nuovo_messaggio=false;                      //indica se è arrivato un nuovo messaggio mqtt
 
-int contatore_buffer=0;
+int contatore_buffer=0;                         //Indice elemento del buffer corrente
  boolean luce=false;
  int offset=0;
  float conta_tacche=0;
-  Scheduler runner;
+ 
+Scheduler runner;
 WiFiClient espClient;
 PubSubClient client(espClient);
 
+//Girando il potenziometro a destra o sinistra aumento o diminuisco rispettivamente l'offset, così da girare la finestra in senso orario o antiorario
+void gestisci_rotary_encoder(){
+   if (millis()-time0_encoder>10){                 
+  aState = digitalRead(outputA);
+   if (aState != aLastState){                //girando il potenziometro sposto la finestra a in senso orario o antiorario
+     if (digitalRead(outputB) != aState ) { //Se ruoto il potenziometro in senso orario
+       offset ++;
+     }else{ //Se ruoto il potenziometro in senso antiorario
+      offset--;
+      }
+     time0_encoder=millis();
+   }
+   } 
+   aLastState = aState; 
+}
 
-void calculate_RPM(){
+//Calcola RPM del disco
+void calculate_RPM(){ 
   if (time1_RPM-time0_RPM!=0){
   RPM=60000/(time1_RPM-time0_RPM);       //1 minuto/ il tempo che ci mette a fare un giro
   }
@@ -64,41 +87,63 @@ void stampa(){
 }
 Task printTask(5000*TASK_MILLISECOND, TASK_FOREVER, stampa);
 
-void ICACHE_RAM_ATTR gestisci_luce(){ 
+//Inverte la luce da accesa a spenta o viceversa contatore_buffer diventa l'indice dell'elemento successivo
+void inverti_luce(boolean _luce){
+   luce=!luce;
+   if (contatore_buffer<buff_length-1){  
+       contatore_buffer++;
+   }
+   switch(luce){
+       case false:digitalWrite(led,LOW);break;
+       case true:digitalWrite(led,HIGH);break;
+   }
+}
+
+//Inverte il buffer puntato da buff_pointer, quello di riserva diventa quello corrente e quello corrente diventa di riserva 
+void inverti_buffer(){
+        buff_length=buff_length_riserva;
+         switch(sel_buff){                        
+            case false: buff_pointer=buff0;break; 
+            case true:buff_pointer=buff1; ;break;
+        }
+}
+
+//Controlla se il disco è all'inizio del giro, spegne la luce e memorizza il tempo di inizio per calcolare gli rpm
+boolean check_inizio_giro(){
     if (conta_tacche==offset){                         //Inizio il giro sempre con luce spenta
         time0_RPM=millis();
         luce=false;
-      digitalWrite(led,LOW);
+        digitalWrite(led,LOW);
+        return true;
       }
+      return false;
+}
 
-  conta_tacche++;
-    
-  if (buff_length>0 && int(conta_tacche)==buff_pointer[buff_length-1-contatore_buffer]+offset ){ //Se il buffer non è vuoto e conta_tacche coincide con il prossimo elemento del buffer (conto dal fondo)
-    luce=!luce;
-    if (contatore_buffer<buff_length-1){  
-    contatore_buffer++;
-    }
-     
-    if (luce==true){
-       digitalWrite(led,HIGH);
-  }else{
-    digitalWrite(led,LOW);}
-    }
-  if (conta_tacche>=128+offset){            //mi preparo a scrivere la nuova colonna solo quando ho finito tutto il giro
-           time1_RPM=millis(); 
+//Controlla se il disco ha completato un giro, dopo aver memorizzato il tempo che ci ha messo a fare un giro calcola gli RPM, e riporta il disco in condizione iniziale
+//Se è arrivato un nuovo messaggio mqtt inverti_buffer()
+boolean check_fine_giro(){
+   if (conta_tacche>=128+offset){            //mi preparo a scrivere la nuova colonna solo quando ho finito tutto il giro
+      time1_RPM=millis(); 
       calculate_RPM(); 
       conta_tacche=offset;
       contatore_buffer=0;
-      if (nuovo_messaggio==true){               //se mi è arrivato un messaggio
-        buff_length=buff_length_riserva;
-        if (sel_buff==true){                   //cambio puntatore buffer da buff a buff1
-           buff_pointer=buff1;           
-        }else{
-           buff_pointer=buff0;              //cambio puntatore buffer da buff1 a buff
-          }
-       }
-   
+      if (nuovo_messaggio==true){           
+        inverti_buffer();
+      }
+      return true;
    }
+   return false;
+}
+
+//controllo se sono a inizio giro, aumento il conteggio delle tacche,se il conta_tacche coincide con con il prossimo elemento del buffer inverto la luce, controllo se ho finito
+//il giro, se l'indice di elemento del buffer è >= della lunghezza del buffer lo riporto a 0.
+void ICACHE_RAM_ATTR gestisci_luce(){ 
+  check_inizio_giro();
+  conta_tacche++;
+  if (buff_length>0 && int(conta_tacche)==buff_pointer[buff_length-1-contatore_buffer]+offset ){ //Se il buffer non è vuoto e conta_tacche coincide con il prossimo elemento del buffer (conto dal fondo)
+      inverti_luce(luce);
+   }
+   check_fine_giro();
    if (contatore_buffer>=buff_length){    
       contatore_buffer=0;
     }
@@ -128,7 +173,7 @@ void setup() {
   
   //connecting to a mqtt broker
   client.setServer(mqtt_broker, mqtt_port);
-  client.setCallback(callback);
+  client.setCallback(gestisci_nuovo_messaggio);
   while (!client.connected()) {
       String client_id = "esp8266-client-";
       client_id += String(WiFi.macAddress());
@@ -155,7 +200,10 @@ void setup() {
   myPID.SetTunings(Kp, Ki, Kd);
 }
 
-void callback(char *topic, byte *payload, unsigned int length) { 
+
+// Leggo il payload dal fondo e inserisco i numeri nel buffer di riserva, quando ho finito nuovo_messagio=true e scambio e indico che il buffer di riserva sarà il prossimo
+//buffer corrente
+void gestisci_nuovo_messaggio(char *topic, byte *payload, unsigned int length) { 
   Serial.print("Nuovo messaggio nel topic: ");
   Serial.println(topic);
   Serial.print("Messaggio:");
@@ -170,11 +218,10 @@ void callback(char *topic, byte *payload, unsigned int length) {
       indice*=10;
       
       }else{
-        if (sel_buff==true){
-          buff0[n_elemento]=numero;
-        }else{
-            buff1[n_elemento]=numero;
-        }      
+        switch(sel_buff){
+        case true:buff0[n_elemento]=numero;break;
+        case false:  buff1[n_elemento]=numero;break;
+        }     
         n_elemento++;
         Serial.print(numero);
         Serial.print(" ");
@@ -182,30 +229,21 @@ void callback(char *topic, byte *payload, unsigned int length) {
         numero=0;
         }
   }   
-           buff_length_riserva=n_elemento;
+        buff_length_riserva=n_elemento;
         
   Serial.println();
   Serial.println("-----------------------");
   nuovo_messaggio=true;
   sel_buff=!sel_buff;
 }
-float time0=0;
+
+
+
 void loop() {
   myPID.Compute();
   analogWrite(enB,map(Output,0,255,0,1023));
   client.loop();
   runner.execute();
-  if (millis()-time0>10){                  //girando il potenziometro sposto la finestra a in senso orario o antiorario
-  aState = digitalRead(outputA);
-   if (aState != aLastState){     
-     if (digitalRead(outputB) != aState ) { //Se ruoto il potenziometro in senso orario
-       offset ++;
-     }else{ //Se ruoto il potenziometro in senso antiorario
-      offset--;
-      }
-     time0=millis();
-   }
-   } 
-   aLastState = aState; 
+ gestisci_rotary_encoder();
  
 }
