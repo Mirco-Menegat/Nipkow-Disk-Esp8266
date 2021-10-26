@@ -15,9 +15,3 @@ Il sensore a infrarossi rileva il passaggio di 128 tacche nere e bianche poste d
 
 ## Software ausiliario
 * Processing
-
-![nipkow](https://user-images.githubusercontent.com/90097113/138710939-f1d4c5c4-922d-4080-b645-fe10c7495c30.jpeg)
-
-https://user-images.githubusercontent.com/90097113/138713564-121376ef-9f7f-405c-bf46-eb5e21d674eb.mp4
-
-
