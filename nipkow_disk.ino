@@ -240,6 +240,8 @@ void gestisci_nuovo_messaggio(char *topic, byte *payload, unsigned int length) {
 
 
 void loop() {
+    // atrent: in generale non mescolerei TaskScheduler con altri metodi di "tasking", avrei fatto tutto coi task
+
   myPID.Compute();
   analogWrite(enB,map(Output,0,255,0,1023));
   client.loop();
