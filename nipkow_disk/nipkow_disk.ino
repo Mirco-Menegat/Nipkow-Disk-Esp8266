@@ -24,10 +24,9 @@ double time1_RPM;
 PID myPID(&RPM, &Output, &Setpoint, Kp, Ki, Kd, DIRECT);
 
 
-//STATI DEL ROTARY ENCODER CORRENTE E PRECEDENTE  time0_encoder per gestire bounce
+//STATI DEL ROTARY ENCODER CORRENTE E PRECEDENTE  
 int aState;
 int aLastState;
-float time0_encoder=0;
 
 // CREDENZIALI WIFI
 const char *ssid = ssid_Wifi;
@@ -68,7 +67,6 @@ void gestisci_rotary_encoder() {
             } else { //Se ruoto il potenziometro in senso antiorario
                 offset--;
             }
-            time0_encoder=millis();
         }
        aLastState = aState;
 }
