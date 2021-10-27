@@ -61,7 +61,6 @@ PubSubClient client(espClient);
 
 //Girando il potenziometro a destra o sinistra aumento o diminuisco rispettivamente l'offset, così da girare la finestra in senso orario o antiorario
 void gestisci_rotary_encoder() {
-    if (millis()-time0_encoder>10) {
         aState = digitalRead(outputA);
         if (aState != aLastState) {               //girando il potenziometro sposto la finestra a in senso orario o antiorario
             if (digitalRead(outputB) != aState ) { //Se ruoto il potenziometro in senso orario
@@ -71,8 +70,7 @@ void gestisci_rotary_encoder() {
             }
             time0_encoder=millis();
         }
-    }
-    aLastState = aState;
+       aLastState = aState;
 }
 
 //Calcola RPM del disco
@@ -82,10 +80,22 @@ void calculate_RPM() {
     }
 }
 
+void pid_loop(){
+    myPID.Compute();
+    analogWrite(enB,map(Output,0,255,0,1023));
+}
+void mqtt_loop(){
+   client.loop();
+}
+
 void stampa() {
     Serial.println(RPM);
 }
+Task mqttTask(3*TASK_MILLISECOND, TASK_FOREVER,mqtt_loop);
+Task pidTask(3*TASK_MILLISECOND, TASK_FOREVER, pid_loop);
 Task printTask(5000*TASK_MILLISECOND, TASK_FOREVER, stampa);
+Task rotary_encoderTask(10*TASK_MILLISECOND, TASK_FOREVER, gestisci_rotary_encoder);
+
 
 //Inverte la luce da accesa a spenta o viceversa contatore_buffer diventa l'indice dell'elemento successivo
 void inverti_luce(boolean _luce) {
@@ -157,6 +167,47 @@ void ICACHE_RAM_ATTR gestisci_luce() {
     }
 }
 
+
+// Leggo il payload dal fondo e inserisco i numeri nel buffer di riserva, quando ho finito nuovo_messagio=true e scambio e indico che il buffer di riserva sarà il prossimo
+//buffer corrente
+void gestisci_nuovo_messaggio(char *topic, byte *payload, unsigned int length) {
+    Serial.print("Nuovo messaggio nel topic: ");
+    Serial.println(topic);
+    Serial.print("Messaggio:");
+
+    int indice=1,numero=0;
+    int n_elemento=0;
+    for (int i = length-1; i >=0 ; i--) {  //leggo il char * al contrario così da poter ricostruire i numeri ed inserirli nel buffer che non sto usando correntemente
+
+        if(payload[i]!=',') {
+            char cifra=(char) payload[i];
+            numero+=(cifra-'0')*indice;
+            indice*=10;
+
+        } else {
+            switch(sel_buff) {
+            case true:
+                buff0[n_elemento]=numero;
+                break;
+            case false:
+                buff1[n_elemento]=numero;
+                break;
+            }
+            n_elemento++;
+            Serial.print(numero);
+            Serial.print(" ");
+            indice=1;
+            numero=0;
+        }
+    }
+    buff_length_riserva=n_elemento;
+
+    Serial.println();
+    Serial.println("-----------------------");
+    nuovo_messaggio=true;
+    sel_buff=!sel_buff;
+}
+
 void setup() {
     Serial.begin(115200);
     pinMode(enB, OUTPUT);
@@ -200,7 +251,13 @@ void setup() {
 
     runner.init();
     runner.addTask(printTask);
+    runner.addTask(rotary_encoderTask);
+    runner.addTask(pidTask);
+    runner.addTask(mqttTask);
+    mqttTask.enable();
+    pidTask.enable();
     printTask.enable();
+    rotary_encoderTask.enable();
     aLastState = digitalRead(outputA);
 
     myPID.SetMode(AUTOMATIC);
@@ -208,56 +265,6 @@ void setup() {
     myPID.SetTunings(Kp, Ki, Kd);
 }
 
-
-// Leggo il payload dal fondo e inserisco i numeri nel buffer di riserva, quando ho finito nuovo_messagio=true e scambio e indico che il buffer di riserva sarà il prossimo
-//buffer corrente
-void gestisci_nuovo_messaggio(char *topic, byte *payload, unsigned int length) {
-    Serial.print("Nuovo messaggio nel topic: ");
-    Serial.println(topic);
-    Serial.print("Messaggio:");
-
-    int indice=1,numero=0;
-    int n_elemento=0;
-    for (int i = length-1; i >=0 ; i--) {  //leggo il char * al contrario così da poter ricostruire i numeri ed inserirli nel buffer che non sto usando correntemente
-
-        if(payload[i]!=',') {
-            char cifra=(char) payload[i];
-            numero+=(cifra-'0')*indice;
-            indice*=10;
-
-        } else {
-            switch(sel_buff) {
-            case true:
-                buff0[n_elemento]=numero;
-                break;
-            case false:
-                buff1[n_elemento]=numero;
-                break;
-            }
-            n_elemento++;
-            Serial.print(numero);
-            Serial.print(" ");
-            indice=1;
-            numero=0;
-        }
-    }
-    buff_length_riserva=n_elemento;
-
-    Serial.println();
-    Serial.println("-----------------------");
-    nuovo_messaggio=true;
-    sel_buff=!sel_buff;
-}
-
-
-
 void loop() {
-    // atrent: in generale non mescolerei TaskScheduler con altri metodi di "tasking", avrei fatto tutto coi task
-
-    myPID.Compute();
-    analogWrite(enB,map(Output,0,255,0,1023));
-    client.loop();
     runner.execute();
-    gestisci_rotary_encoder();
-
 }
